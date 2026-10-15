@@ -1,0 +1,8 @@
+ultralytics>=8.3
+onnx>=1.16
+onnxruntime>=1.19
+onnxslim
+coremltools>=8.0 ; sys_platform == "darwin"
+psutil
+pandas
+matplotlib

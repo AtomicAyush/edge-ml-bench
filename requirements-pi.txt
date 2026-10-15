@@ -1,0 +1,6 @@
+# Latency only: models are exported on the Mac and copied over, and accuracy
+# does not change with the machine, so the Pi needs neither torch nor ultralytics.
+numpy
+psutil
+onnxruntime
+ai-edge-litert
