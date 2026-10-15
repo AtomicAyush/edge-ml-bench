@@ -17,7 +17,13 @@ latency:          ## latency/throughput for every model on this machine -> resul
 accuracy:         ## mAP on coco128 for every model -> results/accuracy.csv
 	$(PY) -m bench.accuracy
 
+coco-val:         ## download COCO val2017 only (~1 GB) for final accuracy numbers
+	$(PY) -m bench.coco_val
+
+accuracy-full:    ## mAP on COCO val2017 (5,000 images) -> results/accuracy.csv
+	$(PY) -m bench.accuracy --data data/coco-val2017.yaml
+
 plot:             ## latency vs. accuracy chart -> results/tradeoff.png
 	$(PY) -m bench.plot
 
-.PHONY: setup export quantize latency accuracy plot
+.PHONY: setup export quantize latency accuracy coco-val accuracy-full plot

@@ -10,14 +10,14 @@ For a small real-time detector, which levers move latency the most: format, prec
 
 | Variant | Mac: ORT CPU | Mac: Core ML CPU / GPU / NE / ALL | Pi: ORT CPU | Pi: LiteRT | mAP (coco128) | mAP (val2017) |
 |---|---|---|---|---|---|---|
-| pytorch_fp32 | — | — | — | — | ☐ | ☐ |
-| onnx_fp32 | ☐ | — | ☐ | — | ☐ | ☐ |
-| onnx_int8_dynamic | ☐ | — | ☐ | — | ☐ | ☐ |
-| onnx_int8_static | ☐ | — | ☐ | — | ☐ | ☐ |
-| onnx_int8_static_head_fp32 | ☐ | — | ☐ | — | ☐ | ☐ |
-| coreml_fp32 | — | ☐ | — | — | ☐ | ☐ |
-| coreml_fp16 | — | ☐ | — | — | ☐ | ☐ |
-| coreml_int8 | — | ☐ | — | — | ☐ | ☐ |
+| pytorch_fp32 | — | — | — | — | ✅ | ✅ |
+| onnx_fp32 | ✅ | — | ☐ | — | ✅ | ✅ |
+| onnx_int8_dynamic | ✅ | — | ☐ | — | ✅ | ✅ |
+| onnx_int8_static | ✅ | — | ☐ | — | ✅ | ✅ |
+| onnx_int8_static_head_fp32 | ✅ | — | ☐ | — | ✅ | ✅ |
+| coreml_fp32 | — | ✅ | — | — | ✅ | ✅ |
+| coreml_fp16 | — | ✅ | — | — | ✅ | ✅ |
+| coreml_int8 | — | ✅ | — | — | ✅ | ✅ |
 | tflite_fp32 | — | — | — | ☐ | ☐ | ☐ |
 | tflite_int8 | — | — | — | ☐ | ☐ | ☐ |
 
@@ -32,9 +32,9 @@ Things to keep fixed or note in every run:
 1. **Harness works end to end on the Mac.**
    - [x] export, quantize, latency, accuracy and plot all run.
 2. **Full Mac runs.**
-   - [ ] `make export quantize latency accuracy plot`, with 200+ timed runs per configuration.
+   - [x] `make export quantize latency accuracy plot`: 2 passes × 300 timed runs per configuration.
 3. **Full COCO accuracy.**
-   - [ ] `python -m bench.accuracy --data coco.yaml` (downloads about 1 GB; takes a while on CPU).
+   - [x] `make coco-val accuracy-full`: COCO val2017 only, about 1 GB, roughly 15 minutes on the M4 Pro.
 4. **Raspberry Pi runs** (steps below).
 5. **Batch size and input size sweep** (optional).
    - [ ] Repeat the best two or three configurations at 320 and 480 px.
