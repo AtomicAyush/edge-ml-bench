@@ -42,12 +42,21 @@ def letterbox(path: Path) -> np.ndarray:
 
 class CocoImages(CalibrationDataReader):
     def __init__(self, folder: Path, limit: int, input_name: str):
-        self.items = iter(sorted(folder.glob("*.jpg"))[:limit])
+        self.paths = sorted(folder.glob("*.jpg"))[:limit]
+        self.items = iter(self.paths)
         self.input_name = input_name
 
     def get_next(self):
         path = next(self.items, None)
         return None if path is None else {self.input_name: letterbox(path)}
+
+    # ONNX Runtime calls these when calibrating in strides (extra_options
+    # CalibStridedMinMax), feeding a few images at a time to bound memory.
+    def __len__(self):
+        return len(self.paths)
+
+    def set_range(self, start_index: int, end_index: int):
+        self.items = iter(self.paths[start_index:end_index])
 
 
 def head_decode_nodes(model_path: Path) -> list[str]:

@@ -24,7 +24,7 @@ For a small real-time detector, which levers move latency the most: format, prec
 Things to keep fixed or note in every run:
 
 - The machine is plugged in, nothing else heavy is running, and Low Power Mode is off.
-- Each configuration runs at least twice. Look at the spread between runs before trusting any difference smaller than about 10%.
+- Each configuration runs at least 3 times. Look at the spread between runs before trusting any difference smaller than about 10%.
 - On the Pi, note the cooling (fan or no fan) and check `vcgencmd measure_temp` after each run. Thermal throttling will show up as a p95 much higher than p50.
 
 ## Milestones
@@ -32,19 +32,24 @@ Things to keep fixed or note in every run:
 1. **Harness works end to end on the Mac.**
    - [x] export, quantize, latency, accuracy and plot all run.
 2. **Full Mac runs.**
-   - [x] `make export quantize latency accuracy plot`: 2 passes × 300 timed runs per configuration.
+   - [x] `make export quantize latency accuracy plot`: 3 passes × 300 timed runs per configuration.
 3. **Full COCO accuracy.**
    - [x] `make coco-val accuracy-full`: COCO val2017 only, about 1 GB, roughly 15 minutes on the M4 Pro.
 4. **Raspberry Pi runs** (steps below).
 5. **Batch size and input size sweep** (optional).
    - [ ] Repeat the best two or three configurations at 320 and 480 px.
    - Smaller inputs trade accuracy for speed differently from quantization, which makes a good comparison.
-6. **Write-up.**
-   - [ ] Fill in the README results and findings.
+6. **INT8 accuracy.**
+   - [x] Calibration comparison, leave-one-out layer ranking, mixed-precision sweep (`make int8`).
+7. **iPhone.**
+   - [x] EdgeDetect app: live detection with stage timings, on-device benchmark, 3 runs merged.
+8. **Write-up.**
+   - [x] README results and findings.
    - [ ] Write a short blog post or report following the outline below.
-7. **Stretch goals.**
-   - [ ] Add end-to-end latency, including preprocessing and NMS, alongside model-only latency.
-   - [ ] Add a live webcam demo that shows the FPS for each backend.
+9. **Stretch goals.**
+   - [x] End-to-end latency, including preprocessing and NMS (iPhone app).
+   - [x] Live camera demo with FPS for each precision and compute unit (iPhone app).
+   - [ ] Core ML activation quantization (W8A8) on the Neural Engine.
    - [ ] Add a second model (YOLOv8s or MobileNet-SSD) to see if the conclusions hold.
 
 ## Raspberry Pi
@@ -56,7 +61,7 @@ Models are exported and quantized on the Mac, then copied to the Pi. The Pi only
 ```bash
 make export quantize
 .venv/bin/python -m bench.export --only tflite_fp32 tflite_int8
-rsync -av --exclude .venv --exclude '*.pt' ./ pi@raspberrypi.local:edge-ml-bench/
+rsync -av --exclude .venv --exclude '*.pt' --exclude results ./ pi@raspberrypi.local:edge-ml-bench/
 ```
 
 **On the Pi** (64-bit Raspberry Pi OS):
@@ -90,6 +95,8 @@ make plot
 6. **Surprises and dead ends.**
 7. **Recommendation.** What you'd ship on an iPhone, and what you'd ship on a Pi.
 
-## Résumé bullet (fill in once the numbers are final)
+## Résumé bullet
 
-> **Edge ML Inference Benchmark** — Benchmarked YOLOv8n across ONNX Runtime, Core ML and TFLite at FP32/FP16/INT8 on Apple silicon (CPU, GPU, Neural Engine) and Raspberry Pi. Found ___× lower latency on the Neural Engine at ___ mAP cost, and recovered ___ mAP lost to naive INT8 quantization by keeping the detect head in FP32.
+> **Edge ML Inference Benchmark** — Benchmarked YOLOv8n at FP32/FP16/INT8 on the CPU, GPU and Neural Engine (8× faster at equal mAP). Fixed INT8's 0 mAP and closed 78% of its remaining accuracy gap with per-channel calibration and mixed precision. iPhone app: 1.6 ms image-to-boxes.
+
+78% = (0.3625 − 0.3437) / (0.3678 − 0.3437): from INT8 with the FP32 decode (min/max calibration) to `onnx_int8_mixed1`, relative to FP32.

@@ -4,3 +4,6 @@ runs/
 *.pt
 __pycache__/
 datasets/
+ios/EdgeDetect/MLModels/
+xcuserdata/
+*.xcuserstate

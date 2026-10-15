@@ -11,8 +11,16 @@ quantize:         ## ONNX Runtime INT8: dynamic, and static calibrated on coco12
 	$(PY) -m bench.quantize_onnx static
 	$(PY) -m bench.quantize_onnx static --head-fp32
 
-latency:          ## latency/throughput for every model on this machine -> results/latency.csv
-	$(PY) -m bench.latency
+int8:             ## calibration comparison, layer ranking, mixed-precision sweep, exports (~1 h)
+	$(PY) -m bench.int8_sensitivity --stage calib
+	$(PY) -m bench.int8_sensitivity --stage loo --calib percentile --per-channel
+	$(PY) -m bench.int8_sensitivity --stage sweep --calib percentile --per-channel --ranking loo
+	$(PY) -m bench.int8_sensitivity --export 0 --name onnx_int8_tuned --calib percentile --per-channel
+	for k in 1 4 8; do $(PY) -m bench.int8_sensitivity --export $$k --name onnx_int8_mixed$$k \
+		--calib percentile --per-channel || exit 1; done
+
+latency:          ## one latency pass (300 timed runs per configuration) -> results/latency.csv; run 3 times
+	$(PY) -m bench.latency --runs 300
 
 accuracy:         ## mAP on coco128 for every model -> results/accuracy.csv
 	$(PY) -m bench.accuracy
@@ -23,7 +31,13 @@ coco-val:         ## download COCO val2017 only (~1 GB) for final accuracy numbe
 accuracy-full:    ## mAP on COCO val2017 (5,000 images) -> results/accuracy.csv
 	$(PY) -m bench.accuracy --data data/coco-val2017.yaml
 
+ios-models:       ## copy the Core ML exports and a sample photo into the iOS app (run export first)
+	mkdir -p ios/EdgeDetect/MLModels
+	for p in fp32 fp16 int8; do P=$$(echo $$p | tr a-z A-Z); rm -rf ios/EdgeDetect/MLModels/YOLOv8n_$$P.mlpackage; \
+		cp -R models/coreml_$$p/yolov8n.mlpackage ios/EdgeDetect/MLModels/YOLOv8n_$$P.mlpackage || exit 1; done
+	cp $$($(PY) -c "import ultralytics, pathlib; print(pathlib.Path(ultralytics.__file__).parent / 'assets' / 'bus.jpg')") ios/EdgeDetect/MLModels/bus.jpg
+
 plot:             ## latency vs. accuracy chart -> results/tradeoff.png
 	$(PY) -m bench.plot
 
-.PHONY: setup export quantize latency accuracy coco-val accuracy-full plot
+.PHONY: setup export quantize int8 latency accuracy coco-val accuracy-full ios-models plot

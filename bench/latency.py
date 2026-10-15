@@ -1,4 +1,4 @@
-"""Measure inference latency, throughput, size and memory for every exported model.
+"""Measure inference latency, throughput and model size for every exported model.
 
     python -m bench.latency                 # every model under models/
     python -m bench.latency --runs 500
@@ -6,7 +6,11 @@
 Appends one row per (model, backend) to results/latency.csv, tagged with the
 device, so runs from the Mac and the Raspberry Pi end up in the same table.
 Timing uses a fixed input after warm-up runs; the first calls include one-time
-compilation and caching and would otherwise distort the numbers.
+compilation and caching and would otherwise distort the numbers. Run it several
+times (plot.py wants at least 3 passes per configuration) with the machine idle.
+
+Memory is not recorded: process RSS depends on which models were loaded earlier
+in the same process, and Neural Engine / GPU allocations live outside it.
 """
 
 import argparse
@@ -19,7 +23,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-import psutil
 
 ROOT = Path(__file__).resolve().parent.parent
 MODELS = ROOT / "models"
@@ -107,7 +110,8 @@ def measure(run, warmup: int, runs: int) -> dict:
 
 
 def model_files():
-    for variant in sorted(p for p in MODELS.iterdir() if p.is_dir()):
+    # Folders starting with "_" hold intermediate files (bench/int8_sensitivity.py's work dir).
+    for variant in sorted(p for p in MODELS.iterdir() if p.is_dir() and not p.name.startswith("_")):
         for f in sorted(variant.iterdir()):
             if f.suffix in (".onnx", ".mlpackage", ".mlmodel", ".tflite") and f.name != "prepped.onnx":
                 yield variant.name, f
@@ -121,7 +125,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     RESULTS.parent.mkdir(exist_ok=True)
-    new_file = not RESULTS.exists()
+    new_file = not RESULTS.exists() or RESULTS.stat().st_size == 0
     device = device_name()
     with RESULTS.open("a", newline="") as fh:
         writer = None
@@ -132,8 +136,7 @@ if __name__ == "__main__":
                 stats = measure(run, args.warmup, args.runs)
                 row = {"timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                        "device": device, "variant": variant, "backend": backend,
-                       **stats, "size_mb": round(size_mb(path), 1),
-                       "rss_mb": round(psutil.Process().memory_info().rss / 1e6)}
+                       **stats, "size_mb": round(size_mb(path), 1)}
                 if writer is None:
                     writer = csv.DictWriter(fh, fieldnames=list(row))
                     if new_file:

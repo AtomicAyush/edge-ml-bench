@@ -1,0 +1,8 @@
+method,per_channel,map50_95,map50
+fp32 (reference),,0.4012,0.5522
+minmax,False,0.373,0.5238
+minmax,True,0.3892,0.5363
+percentile,False,0.3821,0.5262
+percentile,True,0.3933,0.5453
+entropy,False,0.3695,0.5181
+entropy,True,0.382,0.5292

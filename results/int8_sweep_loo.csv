@@ -1,0 +1,7 @@
+ranking,fp32_layers,calibration,map50_95,map50
+loo,0,"percentile, per-channel",0.3933,0.5453
+loo,1,"percentile, per-channel",0.3991,0.5494
+loo,2,"percentile, per-channel",0.3965,0.5471
+loo,4,"percentile, per-channel",0.3981,0.5479
+loo,8,"percentile, per-channel",0.4006,0.5488
+loo,16,"percentile, per-channel",0.3987,0.5507
