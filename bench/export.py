@@ -2,6 +2,7 @@
 
     python -m bench.export            # all variants that run on this machine
     python -m bench.export --only onnx_fp32 coreml_fp16
+    python -m bench.export --base yolov8s.pt --imgsz 480 --only coreml_fp16
 
 Each variant lands in models/<variant>/. Ultralytics does the conversion; the
 point of the study is measuring what each choice costs and buys, not writing a
@@ -13,6 +14,8 @@ import shutil
 from pathlib import Path
 
 from ultralytics import YOLO
+
+from bench.meta import variant_name, write_meta
 
 MODELS = Path(__file__).resolve().parent.parent / "models"
 BASE = "yolov8n.pt"
@@ -31,21 +34,24 @@ VARIANTS = {
 }
 
 
-def export(name: str) -> Path:
-    out_dir = MODELS / name
+def export(name: str, base: str = BASE, imgsz: int = IMGSZ) -> Path:
+    out_dir = MODELS / variant_name(name, base, imgsz)
     out_dir.mkdir(parents=True, exist_ok=True)
-    produced = Path(YOLO(BASE).export(imgsz=IMGSZ, **VARIANTS[name]))
+    produced = Path(YOLO(base).export(imgsz=imgsz, **VARIANTS[name]))
     target = out_dir / produced.name
     if target.exists():
         shutil.rmtree(target) if target.is_dir() else target.unlink()
     shutil.move(str(produced), target)
-    print(f"{name}: {target}")
+    write_meta(out_dir, base=base, imgsz=imgsz)
+    print(f"{out_dir.name}: {target}")
     return target
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", nargs="*", choices=sorted(VARIANTS))
+    parser.add_argument("--base", default=BASE, help="Ultralytics weights, e.g. yolov8s.pt or rtdetr-l.pt")
+    parser.add_argument("--imgsz", type=int, default=IMGSZ)
     args = parser.parse_args()
     for name in args.only or [v for v in VARIANTS if not v.startswith("tflite")]:
-        export(name)
+        export(name, args.base, args.imgsz)

@@ -45,19 +45,22 @@ def onnx_runners(path: Path):
     import onnxruntime as ort
     sess = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
     inp = sess.get_inputs()[0]
-    x = np.random.rand(1, 3, IMGSZ, IMGSZ).astype(np.float32)
+    shape = [d if isinstance(d, int) else 1 for d in inp.shape]  # the model's own input size
+    x = np.random.rand(*shape).astype(np.float32)
     yield "onnxruntime-cpu", lambda: sess.run(None, {inp.name: x})
 
 
 def coreml_runners(path: Path):
     import coremltools as ct
     from PIL import Image
-    img = Image.fromarray(np.random.randint(0, 255, (IMGSZ, IMGSZ, 3), dtype=np.uint8))
     # The same model on each Apple compute unit: the comparison the study is about.
     for unit in ("CPU_ONLY", "CPU_AND_GPU", "CPU_AND_NE", "ALL"):
         model = ct.models.MLModel(str(path), compute_units=getattr(ct.ComputeUnit, unit))
-        name = model.get_spec().description.input[0].name
-        yield f"coreml-{unit.lower()}", lambda m=model, n=name: m.predict({n: img})
+        inp = model.get_spec().description.input[0]
+        w, h = (inp.type.imageType.width, inp.type.imageType.height) if inp.type.HasField("imageType") \
+            else (IMGSZ, IMGSZ)
+        img = Image.fromarray(np.random.randint(0, 255, (h, w, 3), dtype=np.uint8))
+        yield f"coreml-{unit.lower()}", lambda m=model, n=inp.name, i=img: m.predict({n: i})
 
 
 def tflite_runners(path: Path):
