@@ -7,3 +7,11 @@ datasets/
 ios/EdgeDetect/MLModels/
 xcuserdata/
 *.xcuserstate
+.DS_Store
+# Defensive: exported models, model configs, raw images and environment files stay out of git.
+*.onnx
+*.mlpackage
+*.tflite
+*.cfg
+*.ppm
+.env*
