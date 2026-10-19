@@ -1,0 +1,19 @@
+device,variant,compute_units,ops,ne_ops,gpu_ops,cpu_ops,ne_cost,gpu_cost,cpu_cost,quantize_ops,dequantize_ops,int8_weight_ops,lut_weight_ops,off_ne
+Apple M4 Pro,coreml_fp16,CPU_AND_NE,178,176,0,2,0.914,0,0.086,0,0,0,0,mul:1 cast:1
+Apple M4 Pro,coreml_fp16_ios18,CPU_AND_NE,177,175,0,2,0.9127,0,0.0873,0,0,0,0,mul:1 cast:1
+Apple M4 Pro,coreml_fp32,CPU_AND_NE,176,0,0,176,0,0,1.0,0,0,0,0,conv:64 silu:57 concat:17 split:9 add:8 reshape:8 mul:3 max_pool:3 upsample_nearest_neighbor:2 sub:2 transpose:1 softmax:1 sigmoid:1
+Apple M4 Pro,coreml_int8,CPU_AND_NE,178,176,0,2,0.8843,0,0.0832,0,0,0,64,mul:1 cast:1
+Apple M4 Pro,coreml_pal2,CPU_AND_NE,177,175,0,2,0.8829,0,0.0845,0,0,0,62,mul:1 cast:1
+Apple M4 Pro,coreml_pal2_tensor,CPU_AND_NE,177,175,0,2,0.8829,0,0.0845,0,0,0,62,mul:1 cast:1
+Apple M4 Pro,coreml_pal4,CPU_AND_NE,177,175,0,2,0.8829,0,0.0845,0,0,0,62,mul:1 cast:1
+Apple M4 Pro,coreml_pal4_tensor,CPU_AND_NE,177,175,0,2,0.8829,0,0.0845,0,0,0,62,mul:1 cast:1
+Apple M4 Pro,coreml_pal6,CPU_AND_NE,177,175,0,2,0.8829,0,0.0845,0,0,0,62,mul:1 cast:1
+Apple M4 Pro,coreml_pal8,CPU_AND_NE,177,175,0,2,0.8828,0,0.0845,0,0,0,62,mul:1 cast:1
+Apple M4 Pro,coreml_prune50,CPU_AND_NE,177,175,0,2,0.8734,0,0.0836,0,0,0,0,mul:1 cast:1
+Apple M4 Pro,coreml_prune50_pal4,CPU_AND_NE,177,175,0,2,0.8417,0,0.0805,0,0,0,0,mul:1 cast:1
+Apple M4 Pro,coreml_prune75,CPU_AND_NE,177,175,0,2,0.8782,0,0.084,0,0,0,0,mul:1 cast:1
+Apple M4 Pro,coreml_w8a8,CPU_AND_NE,468,466,0,2,0.9345,0,0.0472,144,146,64,0,mul:1 cast:1
+Apple M4 Pro,coreml_w8a8_head_fp16,CPU_AND_NE,458,456,0,2,0.934,0,0.0476,139,141,63,0,mul:1 cast:1
+Apple M4 Pro,coreml_w8a8_mixed1,CPU_AND_NE,454,452,0,2,0.9328,0,0.0485,137,139,62,0,mul:1 cast:1
+Apple M4 Pro,coreml_w8a8_mixed4,CPU_AND_NE,442,440,0,2,0.9315,0,0.0499,131,133,59,0,mul:1 cast:1
+Apple M4 Pro,coreml_w8a8_mixed8,CPU_AND_NE,428,426,0,2,0.9266,0,0.0538,124,126,55,0,mul:1 cast:1

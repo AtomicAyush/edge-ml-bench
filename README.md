@@ -10,7 +10,9 @@ This repo measures YOLOv8n (COCO, 640×640) on an M4 Pro MacBook and an iPhone 1
 
 It also makes INT8 accurate, through calibration and per-layer mixed precision. And it times the whole frame-to-boxes pipeline (letterbox, model, decode, NMS) in an iPhone app ([`ios/`](ios/)): on a fixed photo for the published numbers, and live on camera frames in the app's Live tab. Camera capture itself is not timed.
 
-![latency and accuracy for every configuration](results/tradeoff.png)
+A second round adds full INT8 and weight compression in Core ML, four more detectors, two more input sizes, quantization-aware training and Ultralytics' own INT8 export ([Beyond the main study](#beyond-the-main-study-mac)).
+
+![latency and accuracy for every configuration of the main study](results/tradeoff.png)
 
 ## Results at a glance
 
@@ -37,16 +39,20 @@ It also makes INT8 accurate, through calibration and per-layer mixed precision. 
   - Keeping one layer in FP32 gives **0.3625 mAP at 11.44 ms**: 1.19× faster than FP32, 1.4% below it in mAP.
   - Keeping more layers recovers a little more accuracy but gives back most of the speedup. Restoring `model.0` costs about 0.13 ms, which is within run-to-run noise. Restoring the next three ranked layers costs another 1.34 ms, out of the 2.30 ms that INT8 saves.
 - **Weight-only INT8 (`coreml_int8`) halves the model size** (6.5 → 3.4 MB) at nearly the same accuracy (0.367 vs 0.368). On the Neural Engine it runs at the same speed as FP16 on both devices. Its weights are 8-bit indices into a lookup table, which Core ML expands to dense FP16 (one `constexpr_lut_to_dense` op per convolution), so the arithmetic is still 16-bit.
+- **Going beyond FP16 on the Neural Engine buys little.** On the M4 Pro, full INT8 (W8A8) takes 6.7–8.5% less time than FP16 (1.50–1.53 against 1.64 ms) but loses 0.018–0.108 mAP; keeping 8 layers in FP16 cuts the loss to 0.012 and the speed gain with it (1.62 ms). 8-bit palettization halves the file for 0.0007 mAP at the same Neural Engine speed, though it slows the GPU by 45%. 4-bit and lower, and pruning, break the model without fine-tuning.
+- **The INT8 recipe carries over to YOLOv8s, YOLOv8m and YOLO11n** (tuned INT8 within 0.9–1.5% of FP32), **but not to RT-DETR-L** (9% below).
 
 ## Results
 
 **Accuracy and timing.**
 
 - mAP50-95 and mAP50 are measured on COCO val2017 (5,000 images). The PyTorch FP32 baseline scores 0.368.
-- Every latency is the median of 3 passes. Each pass is 20 warm-up runs followed by 300 timed runs on the Mac, or 10 warm-up and 100 timed runs on the iPhone. The range column shows the fastest and slowest pass.
-- Raw numbers: [`results/latency.csv`](results/latency.csv), [`results/accuracy.csv`](results/accuracy.csv), [`results/ios.csv`](results/ios.csv).
+- The two tables below, and the chart, are the 15 Oct passes: each device's first batch in the CSVs. Every latency is the median of that batch's 3 passes. Each pass is 20 warm-up runs followed by 300 timed runs on the Mac, or 10 warm-up and 100 timed runs on the iPhone. The range column shows the fastest and slowest pass.
+- Raw numbers: [`results/latency.csv`](results/latency.csv), [`results/accuracy.csv`](results/accuracy.csv), [`results/ios.csv`](results/ios.csv). `latency.csv` also holds a 16 Oct batch of Mac passes, reported in [Beyond the main study](#beyond-the-main-study-mac); pooling the two batches gives medians that match neither.
 
 ### MacBook Pro, Apple M4 Pro (model only, Python harness)
+
+The 15 Oct passes (the first batch in `latency.csv`):
 
 | Variant | Backend | p50 (ms) | Range across passes | Size (MB) | mAP50-95 |
 |---|---|---|---|---|---|
@@ -72,6 +78,8 @@ It also makes INT8 accurate, through calibration and per-layer mixed precision. 
 | `onnx_int8_dynamic` | ONNX Runtime · CPU | 16.80 | 16.65–17.42 | 3.5 | 0.352 |
 
 ### iPhone 18 Pro Max (EdgeDetect app, Swift harness)
+
+The 15 Oct passes (the first batch in `ios.csv`):
 
 | Variant | Compute unit | Model p50 (ms) | Range across passes | End to end p50 (ms) | mAP50-95 |
 |---|---|---|---|---|---|
@@ -125,6 +133,117 @@ The phone's mAP is taken from the Mac run of the same model file. On the test ph
 | + 8 layers in FP32 (`onnx_int8_mixed8`) | 0.3638 | −0.0040 | 12.88 | 1.06× |
 
 **Don't trust a 500-image subset.** On 500 images, the first attempt (above) beat plain INT8 with 2 to 6 layers in FP32 (best: 0.3978 vs 0.3933, with 2). On all 5,000 it did not. Even with the final ranking, one FP32 layer gains 0.0058 mAP on the subset ([`results/int8_sweep_loo.csv`](results/int8_sweep_loo.csv)) but only 0.0020 on the full set. Every number in this table uses the full set.
+
+## Beyond the main study (Mac)
+
+A second batch of passes on 16 Oct covers full INT8 and weight compression in Core ML, four more detectors, two more input sizes, quantization-aware training and Ultralytics' own INT8 export. Every configuration again has 3 passes of 300 timed runs, and mAP is on all 5,000 val2017 images.
+
+That batch ran faster than the 15 Oct one behind the tables above: 2.3–3.4% on Core ML (`coreml_fp16` on the Neural Engine: 1.64 against 1.69 ms) and 7.0–7.9% on ONNX Runtime (`onnx_fp32`: 12.53 against 13.61 ms), and the two batches' pass ranges do not overlap. Each table below therefore re-times its reference rows in the same batch. Compare rows within a table, not with the tables above.
+
+### Full INT8 (W8A8) on the Neural Engine
+
+[`bench/coreml_quant.py`](bench/coreml_quant.py) quantizes activations as well as weights: per-channel INT8 weights, and activation ranges from the running min/max over 128 coco128 images. The convolutions can then use INT8 arithmetic, which coremltools' documentation says is faster on the A17 Pro and M4 Neural Engines.
+
+| Variant | Kept in FP16 | mAP50-95 | Neural Engine (ms) | GPU (ms) | CPU (ms) |
+|---|---|---|---|---|---|
+| `coreml_fp16` | everything | 0.3678 | 1.64 | 3.38 | 9.35 |
+| `coreml_w8a8` | nothing | 0.2599 | 1.50 | 3.82 | 14.29 |
+| `coreml_w8a8_head_fp16` | the decode | 0.3387 | 1.53 | 3.81 | 14.18 |
+| `coreml_w8a8_mixed1` | decode + 1 layer | 0.3476 | 1.52 | 3.80 | 14.35 |
+| `coreml_w8a8_mixed4` | decode + 4 layers | 0.3494 | 1.51 | 3.79 | 13.87 |
+| `coreml_w8a8_mixed8` | decode + 8 layers | 0.3561 | 1.62 | 3.75 | 13.51 |
+
+- **W8A8 takes 8.5% less time than FP16 on the Neural Engine, but costs accuracy.** 1.50 against 1.64 ms, with pass ranges of 1.49–1.50 and 1.63–1.65 ms. It loses 0.108 mAP with the decode in INT8 and 0.029 with the decode in FP16. With 8 layers in FP16 it still loses 0.012, and the speed gain is gone (1.62 ms). FP16 remains the format for the Neural Engine.
+- **On the GPU and CPU, W8A8 is slower than FP16:** by 13% and 53%.
+- **The small gain is not explained by ops falling back to the CPU.** Core ML plans all but 2 ops of every W8A8 model on the Neural Engine ([`results/coreml_compute_plan.csv`](results/coreml_compute_plan.csv)). In `coreml_w8a8`, 290 of those 466 ops are quantize or dequantize ops.
+- **The layer ranking is weak beyond its first layer** ([`results/coreml_w8a8_loo.csv`](results/coreml_w8a8_loo.csv), first 500 val2017 images). Restoring `model.2.cv1.conv` to FP16 gains 0.0097 mAP and the next seven layers 0.0014–0.0035, while 39 of the 63 layers lose mAP when restored. Better layers for `mixed4` and `mixed8` may exist.
+
+### Weight compression
+
+[`bench/coreml_compress.py`](bench/coreml_compress.py) palettizes the convolution weights (k-means lookup tables), prunes them (zeroes the smallest), or both, with no fine-tuning ([`results/coreml_compress.csv`](results/coreml_compress.csv)). The reference is the same FP16 export with an iOS 18 target, which grouped tables and sparse weights need. Weight error is ‖W′ − W‖ / ‖W‖ over the compressed weights.
+
+| Variant | Method | Size (MB) | Weight error | mAP50-95 | Neural Engine (ms) | GPU (ms) | CPU (ms) |
+|---|---|---|---|---|---|---|---|
+| `coreml_fp16_ios18` | none | 6.48 | 0 | 0.3678 | 1.64 | 3.52 | 9.69 |
+| `coreml_pal8` | 8-bit lookup table | 3.38 | 0.0078 | 0.3671 | 1.65 | 5.12 | 9.64 |
+| `coreml_pal6` | 6-bit | 2.57 | 0.0362 | 0.3587 | 1.65 | 3.54 | 9.61 |
+| `coreml_pal4` | 4-bit, one table per 16 channels | 1.79 | 0.1402 | 0.1154 | 1.69 | 5.28 | 9.63 |
+| `coreml_pal4_tensor` | 4-bit, one table per tensor | 1.78 | 0.1563 | 0.0449 | 1.63 | 5.32 | 9.64 |
+| `coreml_pal2` | 2-bit, one table per 16 channels | 0.99 | 0.4753 | 0.0000 | 1.70 | 5.30 | 9.65 |
+| `coreml_pal2_tensor` | 2-bit, one table per tensor | 0.98 | 0.4995 | 0.0000 | 1.65 | 5.31 | 9.69 |
+| `coreml_prune50` | 50% of weights zeroed | 3.74 | 0.1734 | 0.0015 | 1.56 | 3.51 | 9.65 |
+| `coreml_prune75` | 75% zeroed | 2.17 | 0.3661 | 0.0000 | 1.45 | 3.52 | 9.72 |
+| `coreml_prune50_pal4` | 50% zeroed, then 4-bit | 1.44 | 0.2077 | 0.0002 | 1.61 | 3.53 | 20.29 |
+
+- **Only 8-bit and 6-bit palettization keep the model working.** 8-bit halves the file for 0.0007 mAP, and 6-bit cuts it to 40% for 0.009. At 4 bits or fewer, and with pruning, detection breaks; these would need fine-tuning.
+- **Neural Engine speed barely moves.** Every variant is within 0.06 ms of FP16 except the pruned ones: `coreml_prune75` takes 12% less time and `coreml_prune50` 5% less, outside the pass ranges. Both detect nothing, and a fine-tuned model with the same sparsity was not tested.
+- **On the GPU, palettized weights cost time.** 8-, 4- and 2-bit take 5.12–5.32 ms against 3.52 ms, 45–51% more; 6-bit and pruning do not. Weight-only `coreml_int8` in the main table shows the same GPU penalty.
+- **`coreml_prune50_pal4` is 2.1× slower than FP16 on the CPU** (20.29 against 9.69 ms).
+
+### Other detectors and input sizes
+
+[`bench/generalize.py`](bench/generalize.py) repeats the INT8 recipe on YOLOv8s, YOLOv8m, YOLO11n and RT-DETR-L at 640, and on YOLOv8n at 320 and 480 px ([`results/generalize.csv`](results/generalize.csv)). [`bench/heads.py`](bench/heads.py) finds each model's decode nodes from its graph. "Naive" is `onnx_int8_static`, "decode FP32" is `onnx_int8_static_head_fp32` and "tuned" is `onnx_int8_tuned`. The YOLOv8n mAPs come from the main study.
+
+| Model | ONNX FP32 | Naive INT8 | INT8, decode FP32 | Tuned INT8 | Tuned vs FP32 | Gap closed by tuning |
+|---|---|---|---|---|---|---|
+| YOLOv8n | 0.3678 | 0.0000 | 0.3437 | 0.3605 | −2.0% | 70% |
+| YOLOv8s | 0.4443 | 0.0000 | 0.4312 | 0.4395 | −1.1% | 63% |
+| YOLO11n | 0.3878 | 0.0000 | 0.3445 | 0.3819 | −1.5% | 86% |
+| YOLOv8m | 0.4971 | 0.0000 | 0.4869 | 0.4927 | −0.9% | 57% |
+| RT-DETR-L | 0.5232 | 0.0000 | 0.4615 | 0.4761 | −9.0% | 24% |
+
+| Model | ONNX FP32 (ms) | Tuned INT8 (ms) | INT8 speedup | Core ML FP16, Neural Engine (ms) | Core ML FP16, ALL (ms) | Neural Engine vs ONNX FP32 |
+|---|---|---|---|---|---|---|
+| YOLOv8n | 12.53 | 10.52 | 1.19× | 1.64 | 1.62 | 7.6× |
+| YOLOv8s | 25.82 | 21.63 | 1.19× | 3.16 | 3.15 | 8.2× |
+| YOLO11n | 11.53 | 10.50 | 1.10× | 1.68 | 1.67 | 6.9× |
+| YOLOv8m | 57.25 | 48.22 | 1.19× | 6.60 | 6.59 | 8.7× |
+| RT-DETR-L | 96.18 | 83.83 | 1.15× | 49.16 | 16.59 | 2.0× |
+
+- **The YOLO family follows YOLOv8n.** Naive INT8 detects nothing on every model, keeping the decode in FP32 fixes it, and tuned INT8 lands within 0.9–2.0% of FP32. Under one shared UINT8 range, the class scores of YOLOv8s, YOLO11n and YOLOv8m span only 0.37–0.38 steps (`score_levels`), so every score rounds to the same value.
+- **RT-DETR-L only partly follows it.** Naive INT8 also scores 0, and keeping its 86 decoder-tail nodes in FP32 brings it back. But tuning closes only 24% of the remaining gap, which leaves it 9% below FP32. Its output mixes 0–1 boxes and scores with a class index up to 79, so under one range the scores and the boxes get only about 3 steps each.
+- **INT8 on the ONNX Runtime CPU is a small speedup for every model** (1.10–1.19×). **Core ML FP16 on the Neural Engine is 6.9–8.7× faster than ONNX FP32 for every YOLO model**, and scores within 0.0006 mAP of it.
+- **RT-DETR-L gains little from the Neural Engine.** `CPU_AND_NE` takes 49.16 ms, only 8% less than the CPU alone (53.33 ms). ALL, which adds the GPU, takes 16.59 ms.
+
+YOLOv8n at other input sizes:
+
+| Input | ONNX FP32 mAP | Tuned INT8 mAP | ONNX FP32 (ms) | Tuned INT8 (ms) | Core ML FP16, Neural Engine (ms) | Core ML FP16, GPU (ms) |
+|---|---|---|---|---|---|---|
+| 320 | 0.2812 | 0.2762 | 3.89 | 3.45 | 0.66 | 1.62 |
+| 480 | 0.3430 | 0.3387 | 7.60 | 6.54 | 2.37 | 2.29 |
+| 640 | 0.3678 | 0.3605 | 12.53 | 10.52 | 1.64 | 3.38 |
+
+- **On the CPU, smaller inputs trade smoothly.** 480 saves 39% of the FP32 time for 0.025 mAP, and 320 saves 69% for 0.087. Tuned INT8 loses 0.004–0.007 at every size.
+- **On the Neural Engine, 320 is 2.5× faster than 640, but 480 is slower than 640** (2.37 ms, passes 2.33–2.39), although it is faster on the GPU and CPU. That is unexplained and was not checked on the iPhone.
+
+### Quantization-aware training
+
+[`bench/qat.py`](bench/qat.py) fine-tunes YOLOv8n through the same INT8 rounding `onnx_int8_tuned` applies (fake quantization, starting from its ranges), then exports with the same recipe ([`results/qat.csv`](results/qat.csv)). One training run: 3 epochs over 5,000 COCO train2017 images ([`bench/coco_train_subset.py`](bench/coco_train_subset.py)), 936 iterations of batch 16, learning rate 1e-4.
+
+| Model | mAP50-95 | Gap to FP32 | ONNX Runtime CPU (ms) |
+|---|---|---|---|
+| `onnx_fp32` | 0.3678 | — | 12.53 |
+| `onnx_int8_tuned` (post-training INT8) | 0.3605 | −0.0073 | 10.52 |
+| `onnx_int8_qat` | 0.3623 | −0.0055 | 10.60 |
+| QAT-trained weights, not quantized (`qat_weights_fp32`) | 0.3618 | −0.0060 | not timed |
+
+QAT gains 0.0018 mAP over post-training INT8 at the same speed, about what keeping one layer in FP32 gives (`onnx_int8_mixed1`: 0.3625). From one training run, that is too small to call a win. The fine-tune also cost the FP32 weights 0.006 mAP, so a longer or gentler schedule is the next thing to try.
+
+### Ultralytics' own INT8 export
+
+Since Ultralytics 8.4.91, `export(format="onnx", quantize=8)` keeps every node except `Conv`, `Gemm` and `MatMul` in float, which avoids the 0-mAP failure above ([ultralytics/ultralytics#25046](https://github.com/ultralytics/ultralytics/pull/25046)). Otherwise it uses ONNX Runtime's defaults: per-tensor weights, min/max calibration, and an INT8 DFL convolution. [`bench/upstream_onnx_int8.py`](bench/upstream_onnx_int8.py) measures the export as installed, and with two changes:
+
+| Variant | Change | mAP50-95 | ONNX Runtime CPU (ms) | Speedup vs FP32 |
+|---|---|---|---|---|
+| `onnx_fp32` | — | 0.3678 | 12.53 | 1.00× |
+| `onnx_int8_ultralytics` | as shipped | 0.3409 | 11.50 | 1.09× |
+| `onnx_int8_ultralytics_pc` | + per-channel weights | 0.3532 | 11.55 | 1.08× |
+| `onnx_int8_ultralytics_pc_dfl` | + DFL convolution kept in float | 0.3574 | 11.79 | 1.06× |
+| `onnx_int8_tuned` | this study's recipe | 0.3605 | 10.52 | 1.19× |
+
+- **As shipped, the export loses 0.027 mAP.** Per-channel weights recover 0.0123 and a float DFL another 0.0042: 61% of the gap together.
+- **This study's tuned recipe is still 0.0031 mAP better and about 1 ms faster.** The two recipes differ in calibration, in which decode nodes stay in float, and in which non-Conv nodes are quantized. None of these was isolated.
+- **Upstream docs:** Ultralytics' ONNX integration page now says what `quantize=8` quantizes, and how to exclude the same nodes when running `quantize_static` on an exported model yourself ([ultralytics/ultralytics#26705](https://github.com/ultralytics/ultralytics/pull/26705), a docs change based on this study, merged on 16 Oct 2026). The per-channel and DFL changes were measured here only.
 
 ## What gets compared
 
@@ -214,6 +333,7 @@ results/              CSVs and the chart
 
 ## Limitations
 
-- **One model:** YOLOv8n at 640×640, batch size 1.
+- **Mostly one model:** YOLOv8n at 640×640, batch size 1. Four more detectors and two more input sizes were measured on the Mac only, for the INT8 recipe and Core ML FP16.
 - **INT8 on ONNX was only measured on the M4 Pro's CPU**, where ONNX Runtime's INT8 kernels give a modest speedup (1.2×). ARM boards and NPUs with dedicated INT8 hardware may differ.
-- **The only INT8 model run on the Neural Engine is weight-only** (`coreml_int8`: 8-bit lookup-table weights, FP16 arithmetic). Core ML's activation quantization (W8A8) is not covered.
+- **Full INT8 (W8A8) in Core ML used one calibration method** (running min/max over 128 images), and its layer ranking is noisy beyond the first layer, so a better W8A8 model may exist.
+- **Compression had no fine-tuning, and QAT is one 3-epoch run.** The broken low-bit and pruned models, and QAT's small gain, show what these methods do without more training, not their best case.

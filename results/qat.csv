@@ -1,0 +1,4 @@
+timestamp,device,variant,data,eval_images,map50_95,map50,train_data,train_images,iters,epochs,sec_per_iter,batch,lr,range_lr,mosaic,calib_images,reference_is_tuned
+2026-10-16T09:53:12+00:00,Apple M4 Pro,ptq_reference,data/coco-val2017.yaml,all,0.3605,0.5114,,,,,,,,,,128,True
+2026-10-16T09:54:36+00:00,Apple M4 Pro,onnx_int8_qat,data/coco-val2017.yaml,all,0.3623,0.5146,coco-train5k.yaml,5000,936,3.0,0.843,16,0.0001,0.001,0.0,128,True
+2026-10-16T09:56:17+00:00,Apple M4 Pro,qat_weights_fp32,data/coco-val2017.yaml,all,0.3618,0.5137,coco-train5k.yaml,5000,936,3.0,0.843,16,0.0001,0.001,0.0,128,True

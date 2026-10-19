@@ -1,0 +1,11 @@
+timestamp,device,variant,method,nbits,granularity,group_size,target_sparsity,size_mb,size_vs_fp16,compressed_weights,weight_sparsity,weight_rel_err
+2026-10-16T06:41:54+00:00,Apple M4 Pro,coreml_fp16_ios18,none,16,,,,6.48,1.0,3145728,0.0,0.0
+2026-10-16T06:42:12+00:00,Apple M4 Pro,coreml_pal8,palettize,8,per_tensor,,,3.38,0.522,3145728,0.0,0.0078
+2026-10-16T06:42:17+00:00,Apple M4 Pro,coreml_pal6,palettize,6,per_tensor,,,2.57,0.397,3145728,0.0,0.0362
+2026-10-16T06:42:21+00:00,Apple M4 Pro,coreml_pal4,palettize,4,per_grouped_channel,16,,1.79,0.276,3145728,0.0,0.1402
+2026-10-16T06:42:23+00:00,Apple M4 Pro,coreml_pal2,palettize,2,per_grouped_channel,16,,0.99,0.153,3145728,0.0,0.4753
+2026-10-16T06:42:24+00:00,Apple M4 Pro,coreml_prune50,prune,16,,,0.5,3.74,0.577,3145728,0.5002,0.1734
+2026-10-16T06:42:26+00:00,Apple M4 Pro,coreml_prune75,prune,16,,,0.75,2.17,0.334,3145728,0.7502,0.3661
+2026-10-16T06:42:29+00:00,Apple M4 Pro,coreml_prune50_pal4,prune+palettize,4,per_grouped_channel,16,0.5,1.44,0.221,3145728,0.5002,0.2077
+2026-10-16T06:42:35+00:00,Apple M4 Pro,coreml_pal4_tensor,palettize,4,per_tensor,,,1.78,0.275,3145728,0.0,0.1563
+2026-10-16T06:42:37+00:00,Apple M4 Pro,coreml_pal2_tensor,palettize,2,per_tensor,,,0.98,0.152,3145728,0.0,0.4995

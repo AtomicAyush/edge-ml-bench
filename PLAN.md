@@ -37,7 +37,7 @@ Things to keep fixed or note in every run:
    - [x] `make coco-val accuracy-full`: COCO val2017 only, about 1 GB, roughly 15 minutes on the M4 Pro.
 4. **Raspberry Pi runs** (steps below).
 5. **Batch size and input size sweep** (optional).
-   - [ ] Repeat the best two or three configurations at 320 and 480 px.
+   - [x] Repeat the best two or three configurations at 320 and 480 px.
    - Smaller inputs trade accuracy for speed differently from quantization, which makes a good comparison.
 6. **INT8 accuracy.**
    - [x] Calibration comparison, leave-one-out layer ranking, mixed-precision sweep (`make int8`).
@@ -49,8 +49,8 @@ Things to keep fixed or note in every run:
 9. **Stretch goals.**
    - [x] End-to-end latency, including preprocessing and NMS (iPhone app).
    - [x] Live camera demo with FPS for each precision and compute unit (iPhone app).
-   - [ ] Core ML activation quantization (W8A8) on the Neural Engine.
-   - [ ] Add a second model (YOLOv8s or MobileNet-SSD) to see if the conclusions hold.
+   - [x] Core ML activation quantization (W8A8) on the Neural Engine.
+   - [x] Add a second model (YOLOv8s or MobileNet-SSD) to see if the conclusions hold.
 
 ## Raspberry Pi
 
