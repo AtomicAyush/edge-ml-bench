@@ -44,6 +44,12 @@ qat:              ## quantization-aware training on 5,000 COCO train images (~80
 	$(PY) -m bench.qat --eval data/coco-val2017.yaml --eval-ptq --eval-fp32
 	$(PY) -m bench.accuracy --data data/coco-val2017.yaml --no-baseline --only onnx_int8_qat
 
+UPSTREAM := onnx_int8_ultralytics onnx_int8_ultralytics_pc onnx_int8_ultralytics_pc_dfl
+
+upstream:         ## Ultralytics' own ONNX INT8 export, as shipped and with two changes, then mAP
+	$(PY) -m bench.upstream_onnx_int8
+	$(PY) -m bench.accuracy --data data/coco-val2017.yaml --no-baseline --only $(UPSTREAM)
+
 latency:          ## one latency pass (300 timed runs per configuration) -> results/latency.csv; run 3 times
 	$(PY) -m bench.latency --runs 300
 
@@ -65,4 +71,4 @@ ios-models:       ## copy the Core ML exports and a sample photo into the iOS ap
 plot:             ## latency vs. accuracy chart -> results/tradeoff.png
 	$(PY) -m bench.plot
 
-.PHONY: setup export quantize int8 w8a8 compress generalize qat latency accuracy coco-val accuracy-full ios-models plot
+.PHONY: setup export quantize int8 w8a8 compress generalize qat upstream latency accuracy coco-val accuracy-full ios-models plot
