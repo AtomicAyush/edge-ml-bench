@@ -164,11 +164,12 @@ Each Core ML model runs with `CPU_ONLY`, `CPU_AND_GPU`, `CPU_AND_NE` and `ALL`, 
 make setup         # Python 3.12 virtualenv + dependencies
 make export        # ONNX + Core ML variants into models/
 make quantize      # ONNX Runtime INT8 variants (downloads coco128 for calibration)
-make coco-val      # COCO val2017 images + labels (~1 GB); make int8, w8a8, compress, generalize and accuracy-full need them
+make coco-val      # COCO val2017 images + labels (~1 GB); make int8, w8a8, compress, generalize, qat and accuracy-full need them
 make int8          # calibration comparison, layer ranking, sweep, tuned + mixed exports (slow: dozens of quantize + validate runs)
 make w8a8          # full INT8 (W8A8) Core ML: build, layer ranking, mixed exports, compute plans, mAP (slow)
 make compress      # palettized and pruned Core ML models -> results/coreml_compress.csv, then mAP
 make generalize    # the INT8 recipe on four more detectors and on YOLOv8n at 320 and 480 px (slow)
+make qat           # quantization-aware training (downloads 5,000 COCO train images, ~800 MB; slow)
 make latency       # one pass -> results/latency.csv; run it 3 times with nothing else running
 make accuracy-full # mAP on COCO val2017 -> results/accuracy.csv
 make plot          # -> results/tradeoff.png
@@ -188,13 +189,15 @@ bench/
   coreml_compress.py  Core ML palettization and pruning
   heads.py            finds the output-decode nodes of YOLO and RT-DETR ONNX graphs
   generalize.py       the INT8 recipe on other detectors and input sizes
+  qat.py              quantization-aware training through onnx_int8_tuned's rounding
+  coco_train_subset.py downloads a fixed 5,000-image subset of COCO train2017 for QAT
   latency.py          timing harness, one runner per backend / compute unit
   accuracy.py         mAP for every variant
   coco_val.py         downloads COCO val2017 (images + labels) only
   merge_ios.py        adds an EdgeDetect export to the results
   plot.py             latency and mAP chart, one panel per device
 ios/                  EdgeDetect: live detection + on-device benchmark (SwiftUI, Core ML)
-data/                 dataset config for COCO val2017
+data/                 dataset configs: COCO val2017, and the COCO train2017 subset for QAT
 models/               exported models (git-ignored, rebuilt by make export / quantize / int8)
 results/              CSVs and the chart
 ```

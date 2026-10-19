@@ -39,6 +39,11 @@ generalize:       ## INT8 recipe on YOLOv8s, YOLOv8m, YOLO11n, RT-DETR-L and YOL
 	$(PY) -m bench.generalize --bases yolov8m.pt --sweep-sizes --calib-stride 8
 	$(PY) -m bench.generalize --bases rtdetr-l.pt --sweep-sizes --calib-stride 4
 
+qat:              ## quantization-aware training on 5,000 COCO train images (~800 MB download; slow) -> results/qat.csv
+	$(PY) -m bench.coco_train_subset
+	$(PY) -m bench.qat --eval data/coco-val2017.yaml --eval-ptq --eval-fp32
+	$(PY) -m bench.accuracy --data data/coco-val2017.yaml --no-baseline --only onnx_int8_qat
+
 latency:          ## one latency pass (300 timed runs per configuration) -> results/latency.csv; run 3 times
 	$(PY) -m bench.latency --runs 300
 
@@ -60,4 +65,4 @@ ios-models:       ## copy the Core ML exports and a sample photo into the iOS ap
 plot:             ## latency vs. accuracy chart -> results/tradeoff.png
 	$(PY) -m bench.plot
 
-.PHONY: setup export quantize int8 w8a8 compress generalize latency accuracy coco-val accuracy-full ios-models plot
+.PHONY: setup export quantize int8 w8a8 compress generalize qat latency accuracy coco-val accuracy-full ios-models plot
