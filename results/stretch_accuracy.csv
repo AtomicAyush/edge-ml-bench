@@ -1,0 +1,7 @@
+device,images,prep,variant,map50_95,map50,map75
+Apple M4 Pro,val2017_500.txt[:300],stretch,yolov8n_fp32,0.4092,0.5563,0.454
+Apple M4 Pro,val2017_500.txt[:300],letterbox,yolov8n_fp32,0.437,0.5899,0.4825
+Apple M4 Pro,val2017_500.txt[:300],stretch,yolov8n_int8,0.3966,0.5484,0.4278
+Apple M4 Pro,val2017_500.txt[:300],letterbox,yolov8n_int8,0.4288,0.5824,0.4768
+Apple M4 Pro,val2017_500.txt[:300],stretch,yolov8n_int8_mixed,0.3947,0.5433,0.4356
+Apple M4 Pro,val2017_500.txt[:300],letterbox,yolov8n_int8_mixed,0.435,0.5871,0.4856

@@ -265,6 +265,10 @@ Since Ultralytics 8.4.91, `export(format="onnx", quantize=8)` keeps every node e
 - **This study's tuned recipe is still 0.0031 mAP better and about 1 ms faster.** The two recipes differ in calibration, in which decode nodes stay in float, and in which non-Conv nodes are quantized. None of these was isolated.
 - **Upstream docs:** Ultralytics' ONNX integration page now says what `quantize=8` quantizes, and how to exclude the same nodes when running `quantize_static` on an exported model yourself ([ultralytics/ultralytics#26705](https://github.com/ultralytics/ultralytics/pull/26705), a docs change based on this study, merged on 16 Oct 2026). The per-channel and DFL changes were measured here only.
 
+### Stretched instead of letterboxed input
+
+Ultralytics, and every mAP above, letterboxes the image to 640×640; some deployment pipelines stretch it to the square instead. [`bench/stretch_eval.py`](bench/stretch_eval.py) scores an ONNX model both ways with pycocotools, on the first 300 val2017 images ([`results/stretch_accuracy.csv`](results/stretch_accuracy.csv), where `yolov8n_fp32`, `yolov8n_int8` and `yolov8n_int8_mixed` are the `onnx_fp32`, `onnx_int8_tuned` and `onnx_int8_mixed1` files). Stretching costs 0.028 mAP50-95 in FP32 (0.4370 to 0.4092), 0.032 for tuned INT8 (0.4288 to 0.3966) and 0.040 with one layer in FP32 (0.4350 to 0.3947). These are COCO API numbers on a 300-image subset, so compare the two inputs with each other, not with the tables above.
+
 ## What gets compared
 
 | Variant | Format | Precision | How it's made |
@@ -339,6 +343,7 @@ bench/
   merge_ios.py        adds an EdgeDetect export to the results
   plot.py             latency and mAP chart, one panel per device
   energy.py           energy per inference from powermetrics (needs root)
+  stretch_eval.py     COCO mAP with the input stretched or letterboxed (pycocotools)
 tests/                unit tests (python -m unittest)
 ios/                  EdgeDetect: live detection + on-device benchmark (SwiftUI, Core ML)
 data/                 dataset configs: COCO val2017, and the COCO train2017 subset for QAT
