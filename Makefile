@@ -68,7 +68,13 @@ ios-models:       ## copy the Core ML exports and a sample photo into the iOS ap
 		cp -R models/coreml_$$p/yolov8n.mlpackage ios/EdgeDetect/MLModels/YOLOv8n_$$P.mlpackage || exit 1; done
 	cp $$($(PY) -c "import ultralytics, pathlib; print(pathlib.Path(ultralytics.__file__).parent / 'assets' / 'bus.jpg')") ios/EdgeDetect/MLModels/bus.jpg
 
+energy:           ## energy per inference from powermetrics (asks for sudo) -> results/energy.csv
+	sudo $(PY) -B -m bench.energy
+
+test:             ## unit tests (no models, root or network needed)
+	$(PY) -B -m unittest -v
+
 plot:             ## latency vs. accuracy chart -> results/tradeoff.png
 	$(PY) -m bench.plot
 
-.PHONY: setup export quantize int8 w8a8 compress generalize qat upstream latency accuracy coco-val accuracy-full ios-models plot
+.PHONY: setup export quantize int8 w8a8 compress generalize qat upstream latency accuracy coco-val accuracy-full ios-models energy test plot

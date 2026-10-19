@@ -275,7 +275,7 @@ Each Core ML model runs with `CPU_ONLY`, `CPU_AND_GPU`, `CPU_AND_NE` and `ALL`, 
   - coco128 numbers in `accuracy.csv` are a quick check only. Its images come from COCO's training set, so mAP there reads about 0.08 high.
 - **Not measured:**
   - Memory. The process's resident memory depends on what else was loaded earlier, and Neural Engine and GPU memory live outside the process.
-  - Power and energy.
+  - Power and energy. [`bench/energy.py`](bench/energy.py) (`make energy`) measures energy per inference from `powermetrics`, but it has not been run yet.
 
 ## Running it
 
@@ -293,6 +293,7 @@ make upstream      # Ultralytics' own ONNX INT8 export, as shipped and with two 
 make latency       # one pass -> results/latency.csv; run it 3 times with nothing else running
 make accuracy-full # mAP on COCO val2017 -> results/accuracy.csv
 make plot          # -> results/tradeoff.png
+make test          # unit tests; no models or root needed
 make ios-models    # copy the Core ML models into the iPhone app, then open ios/EdgeDetect.xcodeproj
 ```
 
@@ -317,6 +318,8 @@ bench/
   coco_val.py         downloads COCO val2017 (images + labels) only
   merge_ios.py        adds an EdgeDetect export to the results
   plot.py             latency and mAP chart, one panel per device
+  energy.py           energy per inference from powermetrics (needs root)
+tests/                unit tests (python -m unittest)
 ios/                  EdgeDetect: live detection + on-device benchmark (SwiftUI, Core ML)
 data/                 dataset configs: COCO val2017, and the COCO train2017 subset for QAT
 models/               exported models (git-ignored, rebuilt by make export / quantize / int8)
