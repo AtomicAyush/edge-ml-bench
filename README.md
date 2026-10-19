@@ -8,7 +8,7 @@ This repo measures YOLOv8n (COCO, 640×640) on an M4 Pro MacBook and an iPhone 1
 - **Precisions:** FP32, FP16 and INT8.
 - **Compute units:** CPU, GPU and Neural Engine.
 
-It also makes INT8 accurate, through calibration and per-layer mixed precision. And it times the whole frame-to-boxes pipeline (letterbox, model, decode, NMS) in an iPhone app ([`ios/`](ios/)): on a fixed photo for the published numbers, and live on camera frames in the app's Live tab. Camera capture itself is not timed.
+It also makes INT8 accurate, through calibration and per-layer mixed precision. And it times the whole frame-to-boxes pipeline (letterbox, model, decode, NMS) in an iPhone app ([`ios/`](ios/)): on a fixed photo for the main tables, and live on camera frames in the app's Live tab, from each frame's capture timestamp to the screen refresh that first shows its boxes.
 
 A second round adds full INT8 and weight compression in Core ML, four more detectors, two more input sizes, quantization-aware training and Ultralytics' own INT8 export ([Beyond the main study](#beyond-the-main-study-mac)).
 

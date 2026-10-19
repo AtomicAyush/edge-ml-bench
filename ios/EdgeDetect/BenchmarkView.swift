@@ -13,11 +13,11 @@ enum BenchmarkActivity {
     }
 }
 
-/// One measured (precision, compute unit) pair on a fixed image.
+/// One measured (model, compute unit) pair on a fixed image.
 struct BenchmarkRow: Identifiable {
-    var id: String { "\(precision.rawValue)-\(unit.rawValue)" }
+    var id: String { "\(model.resource)-\(unit.rawValue)" }
     let timestamp: Date
-    let precision: Precision
+    let model: BundledModel
     let unit: ComputeUnit
     /// First load in this process. Includes the on-device Neural Engine / GPU compile
     /// unless Core ML already cached it (an earlier run, or the Live tab / sample photo).
@@ -32,7 +32,7 @@ struct BenchmarkRow: Identifiable {
     let thermal: ProcessInfo.ThermalState
 }
 
-/// Times every precision on every compute unit against the bundled bus.jpg.
+/// Times every bundled model on every compute unit against the bundled bus.jpg.
 @MainActor
 final class Benchmark: ObservableObject {
     @Published private(set) var rows: [BenchmarkRow] = []
@@ -50,7 +50,7 @@ final class Benchmark: ObservableObject {
                       "size_mb", "first_load_ms", "warm_load_ms", "end_to_end_p50_ms", "detections", "thermal"]
         let iso = ISO8601DateFormatter()
         let lines = rows.map { r in
-            [iso.string(from: r.timestamp), Self.deviceModel, "coreml_\(r.precision.rawValue.lowercased())",
+            [iso.string(from: r.timestamp), Self.deviceModel, r.model.variant,
              "coreml-swift-\(r.unit.pythonName)", fmt(r.modelP50), fmt(r.modelP95), fmt(r.modelMean),
              String(format: "%.1f", 1000 / r.modelMean), "", fmt(r.firstLoadMilliseconds),
              fmt(r.warmLoadMilliseconds), fmt(r.endToEndP50), "\(r.detections)", r.thermal.label]
@@ -64,6 +64,10 @@ final class Benchmark: ObservableObject {
         status = nil
         guard let frame = Self.sampleFrame() else {
             status = "bus.jpg is missing from the bundle."
+            return
+        }
+        guard !BundledModel.all.isEmpty else {
+            status = DetectorError.missingModel(BundledModel.preferred.resource).localizedDescription
             return
         }
         // A run takes about half a minute. If the app is backgrounded or the screen locks
@@ -83,15 +87,15 @@ final class Benchmark: ObservableObject {
 
         let runs = runs
         var failures: [String] = []
-        for precision in Precision.allCases {
+        for model in BundledModel.all {
             for unit in ComputeUnit.allCases {
-                progress = "\(precision.rawValue) on \(unit.rawValue)…"
+                progress = "\(model.name) on \(unit.rawValue)…"
                 let result = await Task.detached(priority: .userInitiated) {
-                    Result { try Self.measure(precision, unit, frame: frame, runs: runs) }
+                    Result { try Self.measure(model, unit, frame: frame, runs: runs) }
                 }.value
                 switch result {
                 case .success(let row): rows.append(row)
-                case .failure(let error): failures.append("\(precision.rawValue)/\(unit.rawValue): \(error.localizedDescription)")
+                case .failure(let error): failures.append("\(model.name)/\(unit.rawValue): \(error.localizedDescription)")
                 }
                 if interrupted {
                     rows = []
@@ -112,10 +116,10 @@ final class Benchmark: ObservableObject {
         }
     }
 
-    nonisolated private static func measure(_ precision: Precision, _ unit: ComputeUnit,
+    nonisolated private static func measure(_ bundled: BundledModel, _ unit: ComputeUnit,
                                             frame: CVPixelBuffer, runs: Int) throws -> BenchmarkRow {
-        let first = try Detector(precision: precision, unit: unit)
-        let detector = try Detector(precision: precision, unit: unit)
+        let first = try Detector(model: bundled, unit: unit)
+        let detector = try Detector(model: bundled, unit: unit)
         let (input, _) = try detector.preprocess(frame)
         for _ in 0..<10 { _ = try detector.detect(frame) }   // warm-up: first calls pay one-time setup
 
@@ -130,7 +134,7 @@ final class Benchmark: ObservableObject {
         let mean = model.reduce(0, +) / Double(runs)
         model.sort()
         endToEnd.sort()
-        return BenchmarkRow(timestamp: Date(), precision: precision, unit: unit,
+        return BenchmarkRow(timestamp: Date(), model: bundled, unit: unit,
                             firstLoadMilliseconds: first.loadMilliseconds,
                             warmLoadMilliseconds: detector.loadMilliseconds,
                             modelP50: Self.median(model), modelP95: model[Int(Double(runs - 1) * 0.95)],
@@ -178,6 +182,7 @@ final class Benchmark: ObservableObject {
 
 struct BenchmarkView: View {
     @StateObject private var bench = Benchmark()
+    @StateObject private var sustained = SustainedRun()
 
     var body: some View {
         NavigationStack {
@@ -186,20 +191,21 @@ struct BenchmarkView: View {
                     Button(bench.progress ?? "Run benchmark (\(bench.runs) runs each)") {
                         Task { await bench.run() }
                     }
-                    .disabled(bench.progress != nil)
+                    .disabled(bench.progress != nil || sustained.isRunning)
                     if let status = bench.status {
                         Text(status).foregroundStyle(.red)
                     }
                 } footer: {
-                    Text("Every precision on every compute unit, on a fixed photo. \"Model\" times the "
+                    Text("Every bundled model on every compute unit, on a fixed photo. \"Model\" times the "
                          + "Core ML call only; \"End to end\" adds letterboxing, decoding and NMS. "
                          + "Keep the phone cool and plugged in; watch the thermal column.")
                 }
+                SustainedSection(run: sustained, sweepRunning: bench.progress != nil)
                 Section("Sample photo") { SamplePhotoView() }
-                ForEach(Precision.allCases) { precision in
-                    let rows = bench.rows.filter { $0.precision == precision }
+                ForEach(BundledModel.all) { model in
+                    let rows = bench.rows.filter { $0.model == model }
                     if !rows.isEmpty {
-                        Section(precision.rawValue) {
+                        Section(model.name) {
                             ForEach(rows) { row in BenchmarkRowView(row: row) }
                         }
                     }

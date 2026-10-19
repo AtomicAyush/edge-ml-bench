@@ -3,11 +3,40 @@ import CoreML
 import CoreVideo
 import Foundation
 
-/// The three Core ML exports from `bench/export.py`, bundled as YOLOv8n_<rawValue>.mlpackage.
-enum Precision: String, CaseIterable, Identifiable {
-    case fp32 = "FP32", fp16 = "FP16", int8 = "INT8"
-    var id: String { rawValue }
-    var resource: String { "YOLOv8n_\(rawValue)" }
+/// A Core ML model compiled into the app. `make ios-models` copies each
+/// models/coreml_<name>/yolov8n.mlpackage to MLModels/YOLOv8n_<NAME>.mlpackage, and Xcode
+/// compiles it to YOLOv8n_<NAME>.mlmodelc. Every .mlmodelc in the bundle is listed, so a
+/// new export (W8A8, palettized, mixed precision, another input size) only needs copying
+/// into MLModels and a rebuild.
+struct BundledModel: Hashable, Identifiable {
+    /// Bundle resource name without the extension, e.g. "YOLOv8n_FP16".
+    let resource: String
+    var id: String { resource }
+    var url: URL? { Bundle.main.url(forResource: resource, withExtension: "mlmodelc") }
+
+    private static let prefix = "YOLOv8n_"
+    /// Shown in the pickers: "FP16", "W8A8".
+    var name: String { resource.hasPrefix(Self.prefix) ? String(resource.dropFirst(Self.prefix.count)) : resource }
+    /// The folder under models/ it came from, which is also the `variant` column of the
+    /// results CSVs: "coreml_fp16".
+    var variant: String {
+        resource.hasPrefix(Self.prefix) ? "coreml_" + name.lowercased() : resource.lowercased()
+    }
+
+    /// The original three in the study's order, then the rest by name.
+    static let all: [BundledModel] = {
+        let order = ["FP32", "FP16", "INT8"]
+        let found = (Bundle.main.urls(forResourcesWithExtension: "mlmodelc", subdirectory: nil) ?? [])
+            .map { BundledModel(resource: $0.deletingPathExtension().lastPathComponent) }
+        return found.sorted { a, b in
+            let i = order.firstIndex(of: a.name) ?? order.count, j = order.firstIndex(of: b.name) ?? order.count
+            return i != j ? i < j : a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+    }()
+
+    /// FP16, the Live tab's default and the sample photo's model. When nothing is bundled
+    /// this still names FP16, so loading it reports the missing-model error.
+    static let preferred = all.first { $0.name == "FP16" } ?? all.first ?? BundledModel(resource: prefix + "FP16")
 }
 
 /// Where Core ML is allowed to run the model. `.all` lets Core ML choose per layer.
@@ -40,7 +69,7 @@ struct Detection: Identifiable {
     let rect: CGRect
     let label: Int
     let score: Float
-    var name: String { cocoNames[label] }
+    var name: String { label < cocoNames.count ? cocoNames[label] : "class \(label)" }
 }
 
 /// Milliseconds spent in each stage of one frame.
@@ -50,23 +79,39 @@ struct Timings {
 }
 
 enum DetectorError: LocalizedError {
-    case missingModel(String), badOutput
+    case missingModel(String), badOutput, outputType(MLMultiArrayDataType)
     var errorDescription: String? {
         switch self {
         case .missingModel(let name):
             "\(name).mlmodelc is not in the app bundle. Run `make ios-models` and rebuild."
         case .badOutput: "The model returned an unexpected output."
+        case .outputType(let type):
+            "The model's output is \(type.label); the decoder reads Float32 or Float16."
         }
     }
 }
 
-/// YOLOv8n end to end: letterbox a camera frame to 640×640, run Core ML, decode the
-/// raw [1, 84, 8400] output and apply non-maximum suppression. The Python benchmark
-/// times only the middle step; this times all three, because that is what an app pays.
+private extension MLMultiArrayDataType {
+    var label: String {
+        switch self {
+        case .float16: "Float16"
+        case .double: "Float64"
+        case .int32: "Int32"
+        default: "data type \(rawValue)"
+        }
+    }
+}
+
+/// YOLOv8n end to end: letterbox a camera frame to the model's input (640×640 for the
+/// study's exports), run Core ML, decode the raw [1, 84, 8400] output and apply
+/// non-maximum suppression. The Python benchmark times only the middle step; this times
+/// all three, because that is what an app pays.
 final class Detector {
-    static let side = 640
-    let precision: Precision
+    let bundled: BundledModel
     let unit: ComputeUnit
+    /// The model's input size in pixels, read from the model, so exports at other input
+    /// sizes (bench.export --imgsz 320) letterbox to the right size.
+    let width: Int, height: Int
     /// Milliseconds to load the compiled model for this compute unit. The first load on
     /// the Neural Engine includes an on-device compile, so it is much slower than later ones.
     let loadMilliseconds: Double
@@ -78,24 +123,28 @@ final class Detector {
     private let pool: CVPixelBufferPool
     private let background: CIImage
 
-    init(precision: Precision, unit: ComputeUnit) throws {
-        guard let url = Bundle.main.url(forResource: precision.resource, withExtension: "mlmodelc") else {
-            throw DetectorError.missingModel(precision.resource)
+    init(model bundled: BundledModel, unit: ComputeUnit) throws {
+        guard let url = bundled.url else {
+            throw DetectorError.missingModel(bundled.resource)
         }
         let config = MLModelConfiguration()
         config.computeUnits = unit.mlComputeUnits
         let start = Clock.now
         model = try MLModel(contentsOf: url, configuration: config)
         loadMilliseconds = Clock.milliseconds(since: start)
-        self.precision = precision
+        self.bundled = bundled
         self.unit = unit
         inputName = model.modelDescription.inputDescriptionsByName.keys.first ?? "image"
         outputName = model.modelDescription.outputDescriptionsByName.keys.first ?? ""
+        let image = model.modelDescription.inputDescriptionsByName[inputName]?.imageConstraint
+        let width = image?.pixelsWide ?? 640, height = image?.pixelsHigh ?? 640
+        self.width = width
+        self.height = height
 
         let attributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: Self.side,
-            kCVPixelBufferHeightKey as String: Self.side,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
             kCVPixelBufferIOSurfacePropertiesKey as String: [:],
         ]
         var pool: CVPixelBufferPool?
@@ -103,7 +152,7 @@ final class Detector {
         self.pool = pool!
         // Ultralytics pads letterboxed images with gray 114.
         background = CIImage(color: CIColor(red: 114 / 255, green: 114 / 255, blue: 114 / 255))
-            .cropped(to: CGRect(x: 0, y: 0, width: Self.side, height: Self.side))
+            .cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
     }
 
     func detect(_ frame: CVPixelBuffer, confidence: Float = 0.25, iou: Float = 0.45) throws -> ([Detection], Timings) {
@@ -119,6 +168,12 @@ final class Detector {
             throw DetectorError.badOutput
         }
         timings.inference = Clock.milliseconds(since: start)
+        // decode() reads Float32 and Float16. Ultralytics exports have Float32 outputs, even
+        // with FP16 or INT8 weights; coremltools exports for iOS 18 (palettized, pruned and
+        // fp16_ios18 from bench.coreml_compress) have Float16 outputs. Others are refused.
+        guard output.dataType == .float32 || output.dataType == .float16 else {
+            throw DetectorError.outputType(output.dataType)
+        }
 
         start = Clock.now
         let boxes = nonMaxSuppression(decode(output, confidence: confidence), iou: iou)
@@ -141,14 +196,14 @@ final class Detector {
 
     // MARK: - Pre-processing
 
-    /// Scale and offset that map the frame into the 640×640 model input.
+    /// Scale and offset that map the frame into the model input (640×640 for the study).
     struct Letterbox { let scale: CGFloat, dx: CGFloat, dy: CGFloat }
 
     func preprocess(_ frame: CVPixelBuffer) throws -> (CVPixelBuffer, Letterbox) {
         let width = CGFloat(CVPixelBufferGetWidth(frame)), height = CGFloat(CVPixelBufferGetHeight(frame))
-        let side = CGFloat(Self.side)
-        let scale = side / max(width, height)
-        let box = Letterbox(scale: scale, dx: (side - width * scale) / 2, dy: (side - height * scale) / 2)
+        let inputWidth = CGFloat(self.width), inputHeight = CGFloat(self.height)
+        let scale = min(inputWidth / width, inputHeight / height)
+        let box = Letterbox(scale: scale, dx: (inputWidth - width * scale) / 2, dy: (inputHeight - height * scale) / 2)
         // Padding is symmetric, so Core Image's bottom-left origin needs no extra flip.
         let image = CIImage(cvPixelBuffer: frame)
             .transformed(by: CGAffineTransform(scaleX: scale, y: scale).translatedBy(x: box.dx / scale, y: box.dy / scale))
@@ -164,29 +219,40 @@ final class Detector {
 
     /// The output holds, for each of 8,400 anchors, a box (cx, cy, w, h in input pixels)
     /// followed by 80 class probabilities. Keep each anchor's best class if it clears
-    /// `confidence`. Loops run class-major so memory is read in order.
+    /// `confidence`. Loops run class-major so memory is read in order. Float32 and Float16
+    /// outputs are read in place (detect() refuses other types).
     private func decode(_ output: MLMultiArray, confidence: Float) -> [Detection] {
-        let channels = output.shape[1].intValue, anchors = output.shape[2].intValue
-        let rowStride = output.strides[1].intValue, colStride = output.strides[2].intValue
+        let shape = (channels: output.shape[1].intValue, anchors: output.shape[2].intValue,
+                     rowStride: output.strides[1].intValue, colStride: output.strides[2].intValue)
+        return output.dataType == .float16
+            ? output.withUnsafeBufferPointer(ofType: Float16.self) { decode($0, shape, confidence: confidence) }
+            : output.withUnsafeBufferPointer(ofType: Float.self) { decode($0, shape, confidence: confidence) }
+    }
+
+    /// Specialized for Float and Float16 by the optimizer (both build configurations use -O),
+    /// so the Float32 path does the same work as before.
+    private func decode<Element: BinaryFloatingPoint>(
+        _ p: UnsafeBufferPointer<Element>, _ shape: (channels: Int, anchors: Int, rowStride: Int, colStride: Int),
+        confidence: Float
+    ) -> [Detection] {
+        let (channels, anchors, rowStride, colStride) = shape
         var best = [Float](repeating: 0, count: anchors)
         var bestClass = [Int](repeating: 0, count: anchors)
         var detections: [Detection] = []
 
-        output.withUnsafeBufferPointer(ofType: Float.self) { p in
-            for c in 4..<channels {
-                let row = c * rowStride
-                for j in 0..<anchors where p[row + j * colStride] > best[j] {
-                    best[j] = p[row + j * colStride]
-                    bestClass[j] = c - 4
-                }
+        for c in 4..<channels {
+            let row = c * rowStride
+            for j in 0..<anchors where Float(p[row + j * colStride]) > best[j] {
+                best[j] = Float(p[row + j * colStride])
+                bestClass[j] = c - 4
             }
-            for j in 0..<anchors where best[j] >= confidence {
-                let cx = p[j * colStride], cy = p[rowStride + j * colStride]
-                let w = p[2 * rowStride + j * colStride], h = p[3 * rowStride + j * colStride]
-                detections.append(Detection(
-                    rect: CGRect(x: CGFloat(cx - w / 2), y: CGFloat(cy - h / 2), width: CGFloat(w), height: CGFloat(h)),
-                    label: bestClass[j], score: best[j]))
-            }
+        }
+        for j in 0..<anchors where best[j] >= confidence {
+            let cx = Float(p[j * colStride]), cy = Float(p[rowStride + j * colStride])
+            let w = Float(p[2 * rowStride + j * colStride]), h = Float(p[3 * rowStride + j * colStride])
+            detections.append(Detection(
+                rect: CGRect(x: CGFloat(cx - w / 2), y: CGFloat(cy - h / 2), width: CGFloat(w), height: CGFloat(h)),
+                label: bestClass[j], score: best[j]))
         }
         return detections
     }

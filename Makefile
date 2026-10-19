@@ -62,10 +62,15 @@ coco-val:         ## download COCO val2017 only (~1 GB) for final accuracy numbe
 accuracy-full:    ## mAP on COCO val2017 (5,000 images) -> results/accuracy.csv
 	$(PY) -m bench.accuracy --data data/coco-val2017.yaml
 
+# The models the iPhone app bundles: every YOLOv8n Core ML export except the 320 and 480 px ones and the
+# W8A8 mixed-precision ones, which is the 15 measured on 16 Oct. Override with IOS_MODELS="coreml_fp16 ...".
+IOS_MODELS ?= $(filter-out %_320 %_480 coreml_w8a8_mixed%,\
+	$(patsubst models/%/yolov8n.mlpackage,%,$(wildcard models/coreml_*/yolov8n.mlpackage)))
+
 ios-models:       ## copy the Core ML exports and a sample photo into the iOS app (run export first)
 	mkdir -p ios/EdgeDetect/MLModels
-	for p in fp32 fp16 int8; do P=$$(echo $$p | tr a-z A-Z); rm -rf ios/EdgeDetect/MLModels/YOLOv8n_$$P.mlpackage; \
-		cp -R models/coreml_$$p/yolov8n.mlpackage ios/EdgeDetect/MLModels/YOLOv8n_$$P.mlpackage || exit 1; done
+	for v in $(IOS_MODELS); do P=$$(echo $${v#coreml_} | tr a-z A-Z); rm -rf ios/EdgeDetect/MLModels/YOLOv8n_$$P.mlpackage; \
+		cp -R models/$$v/yolov8n.mlpackage ios/EdgeDetect/MLModels/YOLOv8n_$$P.mlpackage || exit 1; done
 	cp $$($(PY) -c "import ultralytics, pathlib; print(pathlib.Path(ultralytics.__file__).parent / 'assets' / 'bus.jpg')") ios/EdgeDetect/MLModels/bus.jpg
 
 energy:           ## energy per inference from powermetrics (asks for sudo) -> results/energy.csv

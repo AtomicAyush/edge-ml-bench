@@ -25,7 +25,7 @@ struct SamplePhotoView: View {
                     .frame(maxHeight: 360)
             }
             if let error { Text(error).foregroundStyle(.red) }
-            Text("FP16 · All compute units · end to end \(timings.total, specifier: "%.1f") ms")
+            Text("\(BundledModel.preferred.name) · All compute units · end to end \(timings.total, specifier: "%.1f") ms")
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(detections) { d in
                 Text(String(format: "%@ %.2f  [%d, %d, %d, %d]", d.name, d.score,
@@ -38,7 +38,7 @@ struct SamplePhotoView: View {
             guard detections.isEmpty, !BenchmarkActivity.isRunning else { return }
             do {
                 guard let frame = Benchmark.sampleFrame() else { return }
-                let detector = try Detector(precision: .fp16, unit: .all)
+                let detector = try Detector(model: .preferred, unit: .all)
                 (detections, timings) = try detector.detect(frame)
             } catch {
                 self.error = error.localizedDescription
