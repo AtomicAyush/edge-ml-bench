@@ -34,7 +34,7 @@ The Python benchmark times the model call alone. An app pays for more than that:
 
 ## Results (iPhone 18 Pro Max, hardware ID iPhone19,3)
 
-Median of 3 benchmark runs:
+Median of the 3 benchmark runs on 15 Oct, with the three original models:
 
 - **FP16 on the Neural Engine:** 1.01 ms for the model, 1.61 ms end to end (letterbox, model, decode and NMS on the 810×1080 sample photo).
 - **FP32 on the CPU:** 12.18 ms for the model.
@@ -43,6 +43,13 @@ Median of 3 benchmark runs:
 - **Loads:** the first Neural Engine load of the INT8 model after installing took 2.07 s (on-device compile). Cached loads take about 13 ms on the Neural Engine and under 3 ms on the CPU and GPU. FP16 has no cold row, because both of its Neural Engine settings are compiled before the run starts. The Live tab, the default tab, loads FP16 on the Neural Engine at launch. The Sample photo section loads FP16 on All when the Benchmark tab opens. The compile is cached separately for each compute-unit setting: INT8 compiled again on All (2.07 s) right after compiling on the Neural Engine.
 
 The full table is in the [main README](../README.md#iphone-18-pro-max-edgedetect-app-swift-harness).
+
+On 16 Oct the app bundled 15 models and recorded one sweep pass, five 10-minute sustained runs and three live recordings ([`results/ios_raw/`](../results/ios_raw/), [`ios_sustained/`](../results/ios_sustained/), [`ios_live/`](../results/ios_live/); summary in the [main README](../README.md#iphone-18-pro-max-16-oct-15-models-sustained-load-and-the-live-camera)):
+
+- The sweep reproduces the numbers above for FP32 and FP16 (FP16 on the Neural Engine: 1.03 ms model, 1.59 ms end to end), and no compressed model is meaningfully faster end to end on the Neural Engine.
+- In the sustained runs on the Neural Engine, 131 of 180 windows took 3.83–4.58 ms for the model and 6.45–7.73 ms end to end, at thermal Nominal as well as Fair. The cause is not known.
+- Live, every recording ran at the camera's 30 fps with no dropped frames. Capture to boxes on screen took 55.67–72.92 ms (p50).
+- Caveats: the sweep is one pass, the sustained runs ran back to back (16 to 176 s apart), and the display ran at 60 Hz (all but 13 of the 5,873 live frames, which had 20.83 ms), so on-screen times move in steps of one refresh.
 
 ## Running it
 
@@ -74,7 +81,7 @@ Get the UDID from `xcrun devicectl list devices`. Run the benchmark at least 3 t
 | `sustained-<time>.csv` | 10 s window | `timestamp` (window end), `device`, `variant`, `backend`, `window`, `elapsed_s`, `window_s`, `iterations`, `model_p50_ms`, `end_to_end_p50_ms`, `end_to_end_p95_ms`, `fps`, `thermal`, `battery_level` (0–1, empty if unknown), `battery_state`, `low_power` |
 | `live-<time>.csv` | processed camera frame | `timestamp` (capture), `device`, `variant`, `backend`, `frame`, `t_s` (since the first recorded frame), `capture_to_detect_ms`, `pre_ms`, `model_ms`, `post_ms`, `detect_to_screen_ms`, `capture_to_boxes_ms`, `refresh_ms`, `dropped_before` (camera drops since the previous processed frame), `thermal` |
 
-`model_p50_ms` in the sustained file and `model_ms` in the live file time the detector's Core ML stage, as the Live tab's Model column does: the prediction plus wrapping the input and reading the output. The benchmark sweep's `p50_ms` times the prediction alone, so it covers slightly less work. `capture_to_detect_ms` should be positive (camera pipeline plus waiting for the detector queue); a negative value would mean the clocks disagree. Empty on-screen columns in the live file mean a newer frame's boxes replaced these before any refresh showed them.
+`model_p50_ms` in the sustained file and `model_ms` in the live file time the detector's Core ML stage, as the Live tab's Model column does: the prediction plus wrapping the input and reading the output. The benchmark sweep's `p50_ms` times the prediction alone, so it covers slightly less work. `capture_to_detect_ms` should be positive (camera pipeline plus waiting for the detector queue: medians of 24.91–27.97 ms in the 16 Oct recordings); a negative value would mean the clocks disagree. Empty on-screen columns in the live file mean a newer frame's boxes replaced these before any refresh showed them.
 
 The Simulator works for the Benchmark tab, but it has no camera, and Core ML runs on the Mac's hardware rather than the phone's, so its numbers say nothing about a phone. For a quick check of the sustained mode, launch arguments shorten the run and its windows:
 

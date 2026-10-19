@@ -26,6 +26,7 @@ A second round adds full INT8 and weight compression in Core ML, four more detec
 - **End to end, the iPhone takes 1.61 ms per image on the Neural Engine** (FP16, an 810×1080 photo).
   - That covers letterboxing, the model, decoding 8,400 candidate boxes and NMS. The work around the model adds 0.6 ms. The Live tab runs the same pipeline on camera frames.
   - The first load of the INT8 model on the Neural Engine after installing took 2.07 s (on-device compile). Cached loads take about 13 ms on the Neural Engine and under 3 ms on the CPU and GPU.
+  - **Under continuous load it was mostly much slower.** In 10-minute runs on 16 Oct, 73% of the 10-second windows on the Neural Engine took about 4 ms for the model and 7.28–7.55 ms end to end (each run's median) instead of 1.0 and 1.6 ms, at thermal Nominal as well as Fair. The cause is not known yet ([details](#iphone-18-pro-max-16-oct-15-models-sustained-load-and-the-live-camera)).
 - **Naive static INT8 detects nothing (mAP 0.000).**
   - YOLOv8's last step joins box coordinates (0–640 px) and class scores (0–1) into one tensor. A single INT8 range for that tensor rounds every score to zero.
   - Keeping just that decode step in FP32 brings mAP back to 0.344.
@@ -48,7 +49,7 @@ A second round adds full INT8 and weight compression in Core ML, four more detec
 
 - mAP50-95 and mAP50 are measured on COCO val2017 (5,000 images). The PyTorch FP32 baseline scores 0.368.
 - The two tables below, and the chart, are the 15 Oct passes: each device's first batch in the CSVs. Every latency is the median of that batch's 3 passes. Each pass is 20 warm-up runs followed by 300 timed runs on the Mac, or 10 warm-up and 100 timed runs on the iPhone. The range column shows the fastest and slowest pass.
-- Raw numbers: [`results/latency.csv`](results/latency.csv), [`results/accuracy.csv`](results/accuracy.csv), [`results/ios.csv`](results/ios.csv). `latency.csv` also holds a 16 Oct batch of Mac passes, reported in [Beyond the main study](#beyond-the-main-study-mac); pooling the two batches gives medians that match neither.
+- Raw numbers: [`results/latency.csv`](results/latency.csv), [`results/accuracy.csv`](results/accuracy.csv), [`results/ios.csv`](results/ios.csv). `latency.csv` and `ios.csv` also hold 16 Oct batches, reported in their own sections: the Mac's in [Beyond the main study](#beyond-the-main-study-mac) and the iPhone's [below](#iphone-18-pro-max-16-oct-15-models-sustained-load-and-the-live-camera); pooling two batches gives medians that match neither.
 
 ### MacBook Pro, Apple M4 Pro (model only, Python harness)
 
@@ -102,6 +103,25 @@ The two harnesses time different amounts of work, so compare phone rows with pho
 - **Mac Core ML rows:** also include coremltools converting a PIL image in and the output to NumPy on every call. The ONNX Runtime rows pass a NumPy array directly.
 
 The phone's mAP is taken from the Mac run of the same model file. On the test photo, the app's Sample photo view finds five detections, a bus and four people (the `detections` column of `ios.csv`). A hand check against `YOLO("models/coreml_fp16/yolov8n.mlpackage").predict("bus.jpg", iou=0.45)` in Python found the same five, with box corners within a pixel. That comparison is not saved in `results/`.
+
+### iPhone 18 Pro Max, 16 Oct: 15 models, sustained load and the live camera
+
+The app as built on 16 Oct bundled 15 models: the three above, `coreml_w8a8` and `coreml_w8a8_head_fp16` from [Full INT8](#full-int8-w8a8-on-the-neural-engine), and the ten models of [Weight compression](#weight-compression). It recorded one benchmark sweep ([`results/ios_raw/`](results/ios_raw/), merged into `ios.csv` and `latency.csv`), five 10-minute sustained runs ([`results/ios_sustained/`](results/ios_sustained/)) and three live camera recordings ([`results/ios_live/`](results/ios_live/)). Read them with these caveats:
+
+- **The sweep is one pass, not three.** 13 of the 15 models were compiled on the phone just before their Neural Engine and ALL rows (first loads of 1.76–3.51 s). Their model-only times there (1.02–1.53 ms) are less trustworthy than their end-to-end times. The chart above keeps the 15 Oct passes.
+- **The sustained runs ran back to back,** 16 to 176 s apart, so each started as warm as the previous one left the phone. The FP32 CPU run started at thermal state Fair.
+- **The display ran at 60 Hz** (`refresh_ms` 16.67) for all but 13 of the 5,873 live frames, which had 20.83 ms (48 Hz), so on-screen times in the live recordings move in steps of one refresh.
+- The phone was charging during every sustained run, and the thermal state is the OS's coarse four-level label.
+
+What they show:
+
+- **The sweep reproduces 15 Oct's FP32 and FP16 rows.** FP16 on the Neural Engine takes 1.03 ms for the model and 1.59 ms end to end (1.01 and 1.61 ms on 15 Oct). Every FP32 and FP16 row is within about 3% on both. INT8 on the Neural Engine reads 1.42 ms model-only, like 15 Oct's first pass, which also compiled (1.41 ms); its end-to-end time is 1.56 ms.
+- **No compressed model is meaningfully faster end to end on the Neural Engine.** The 14 models other than FP32 take 1.48–1.62 ms end to end on the Neural Engine and ALL, apart from 6 rows at 2.73–3.08 ms. W8A8 takes 1.55 ms, against FP16's 1.59.
+- **Palettized weights cost time on the GPU, as on the Mac.** INT8, PAL8, PAL4 and PAL2 take 4.96–5.36 ms, against 2.36–2.38 ms for FP16, PAL6 and the pruned models. PRUNE50_PAL4 takes 35.96 ms on the CPU, 5.1× FP16's 7.03 ms.
+- **On the photo, 2-bit palettization and pruning find none of the 5 objects** (`detections`), matching their Mac mAP. PAL4 finds 3 (0 on the GPU) and PAL4_TENSOR finds 2.
+- **Under continuous load, the Neural Engine path ran about 4× slower than in the sweep.** Of the 180 ten-second windows on the Neural Engine (FP16, INT8 and W8A8), 131 took 3.83–4.58 ms for the model and 6.45–7.73 ms end to end. Only 13 matched the sweep (0.89–1.00 and 1.46–1.59 ms). The slow level appeared at thermal Nominal (108 windows) as well as Fair (23), and the work around the model slowed too: end to end minus model was 3.40 ms, against 0.59 ms in the fast windows (medians). The cause is not known. In the four sweep passes (three on 15 Oct, one on 16 Oct), none of the 40 end-to-end loops on the Neural Engine and ALL (FP32 aside) went above 3.08 ms.
+- **The GPU slowed as the phone warmed.** FP16 on the GPU went from 2.39–2.41 ms for the model to 3.17 ms in its first window at Fair (60 s), and its last minute was 25% slower than its first (3.01 against 2.40 ms). FP32 on the CPU ranged from 12.31 to 15.65 ms per window with no clear link to the thermal label (its slowest window came at Nominal); its last minute was 6.5% slower than its first (14.35 against 13.48 ms).
+- **Live, every recording ran at the camera's 30 fps with no dropped frames,** so live fps does not tell the models apart. Capture to boxes on screen took 55.67 ms (p50) for FP16 on the Neural Engine, 70.15 ms for INT8 on the Neural Engine and 72.92 ms for FP32 on the CPU. Most of that gap is in detection to screen (handing the boxes to the UI and waiting for a 60 Hz refresh), not in the detector: the detector's work per frame differs by only 0.6 and 6.5 ms (medians of 8.92, 9.55 and 15.45 ms), while detection to screen differs by 12.7 and 13.2 ms. The model stage of FP16 on the Neural Engine took 4.74 ms live, close to the sustained runs' slow level (3.83–4.58 ms) and far from the sweep's 1.03 ms.
 
 ## Making INT8 accurate
 
@@ -339,4 +359,5 @@ results/              CSVs and the chart
 - **Mostly one model:** YOLOv8n at 640×640, batch size 1. Four more detectors and two more input sizes were measured on the Mac only, for the INT8 recipe and Core ML FP16.
 - **INT8 on ONNX was only measured on the M4 Pro's CPU**, where ONNX Runtime's INT8 kernels give a modest speedup (1.2×). ARM boards and NPUs with dedicated INT8 hardware may differ.
 - **Full INT8 (W8A8) in Core ML used one calibration method** (running min/max over 128 images), and its layer ranking is noisy beyond the first layer, so a better W8A8 model may exist.
+- **The 16 Oct iPhone data is one sweep pass and back-to-back sustained runs**, and the sustained Neural Engine slowdown is unexplained.
 - **Compression had no fine-tuning, and QAT is one 3-epoch run.** The broken low-bit and pruned models, and QAT's small gain, show what these methods do without more training, not their best case.
