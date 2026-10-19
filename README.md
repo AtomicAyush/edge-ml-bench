@@ -164,8 +164,10 @@ Each Core ML model runs with `CPU_ONLY`, `CPU_AND_GPU`, `CPU_AND_NE` and `ALL`, 
 make setup         # Python 3.12 virtualenv + dependencies
 make export        # ONNX + Core ML variants into models/
 make quantize      # ONNX Runtime INT8 variants (downloads coco128 for calibration)
-make coco-val      # COCO val2017 images + labels (~1 GB); make int8 and accuracy-full need them
+make coco-val      # COCO val2017 images + labels (~1 GB); make int8, w8a8, compress and accuracy-full need them
 make int8          # calibration comparison, layer ranking, sweep, tuned + mixed exports (slow: dozens of quantize + validate runs)
+make w8a8          # full INT8 (W8A8) Core ML: build, layer ranking, mixed exports, compute plans, mAP (slow)
+make compress      # palettized and pruned Core ML models -> results/coreml_compress.csv, then mAP
 make latency       # one pass -> results/latency.csv; run it 3 times with nothing else running
 make accuracy-full # mAP on COCO val2017 -> results/accuracy.csv
 make plot          # -> results/tradeoff.png
@@ -181,6 +183,8 @@ bench/
   export.py           YOLOv8n -> ONNX / Core ML / TFLite variants
   quantize_onnx.py    ONNX Runtime INT8 (dynamic, static, static with FP32 decode)
   int8_sensitivity.py calibration comparison, per-layer sensitivity, mixed-precision sweep
+  coreml_quant.py     full INT8 (W8A8) Core ML: build, layer ranking, compute plan
+  coreml_compress.py  Core ML palettization and pruning
   latency.py          timing harness, one runner per backend / compute unit
   accuracy.py         mAP for every variant
   coco_val.py         downloads COCO val2017 (images + labels) only

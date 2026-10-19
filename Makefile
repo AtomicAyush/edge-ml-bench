@@ -19,6 +19,21 @@ int8:             ## calibration comparison, layer ranking, mixed-precision swee
 	for k in 1 4 8; do $(PY) -m bench.int8_sensitivity --export $$k --name onnx_int8_mixed$$k \
 		--calib percentile --per-channel || exit 1; done
 
+W8A8 := coreml_w8a8 coreml_w8a8_head_fp16 coreml_w8a8_mixed1 coreml_w8a8_mixed4 coreml_w8a8_mixed8
+COMPRESS := coreml_fp16_ios18 coreml_pal8 coreml_pal6 coreml_pal4 coreml_pal2 coreml_prune50 coreml_prune75 \
+	coreml_prune50_pal4 coreml_pal4_tensor coreml_pal2_tensor
+
+w8a8:             ## full INT8 Core ML: build, Core ML layer ranking, mixed exports, compute plans, mAP (slow)
+	$(PY) -m bench.coreml_quant --build
+	$(PY) -m bench.coreml_quant --stage loo
+	for k in 1 4 8; do $(PY) -m bench.coreml_quant --export $$k --ranking loo || exit 1; done
+	$(PY) -m bench.coreml_quant --plan all
+	$(PY) -m bench.accuracy --data data/coco-val2017.yaml --no-baseline --only $(W8A8)
+
+compress:         ## Core ML palettization and pruning -> results/coreml_compress.csv, then mAP
+	$(PY) -m bench.coreml_compress --only $(COMPRESS)
+	$(PY) -m bench.accuracy --data data/coco-val2017.yaml --no-baseline --only $(COMPRESS)
+
 latency:          ## one latency pass (300 timed runs per configuration) -> results/latency.csv; run 3 times
 	$(PY) -m bench.latency --runs 300
 
@@ -40,4 +55,4 @@ ios-models:       ## copy the Core ML exports and a sample photo into the iOS ap
 plot:             ## latency vs. accuracy chart -> results/tradeoff.png
 	$(PY) -m bench.plot
 
-.PHONY: setup export quantize int8 latency accuracy coco-val accuracy-full ios-models plot
+.PHONY: setup export quantize int8 w8a8 compress latency accuracy coco-val accuracy-full ios-models plot
